@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Streaming chat demo</title>
+<style>
+  :root { color-scheme: light dark; }
+  body { font: 15px/1.5 ui-sans-serif, system-ui, sans-serif;
+         max-width: 720px; margin: 2rem auto; padding: 0 1rem; }
+  h1 { font-size: 1.25rem; }
+  textarea { width: 100%; min-height: 4rem; font: inherit; padding: .5rem;
+             box-sizing: border-box; }
+  .row { display: flex; gap: .5rem; margin: .5rem 0; align-items: center; }
+  button { padding: .4rem .9rem; cursor: pointer; }
+  button[disabled] { opacity: .5; cursor: not-allowed; }
+  #out { white-space: pre-wrap; padding: 1rem; min-height: 6rem;
+         border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+         border-radius: 6px; background: color-mix(in srgb, currentColor 5%, transparent); }
+  #usage { font-size: 12px; opacity: .7; margin-top: .5rem; }
+  .err { color: #c33; }
+</style>
+</head>
+<body>
+<h1>Streaming chat demo</h1>
+<p>POST to <code>/chat/stream</code>. Tokens appear as they arrive.
+   Click <b>Stop</b> mid-stream to test disconnect handling (server should
+   stop generating, server log will say "client disconnected").</p>
+
+<textarea id="prompt">Explain async I/O in three sentences.</textarea>
+<div class="row">
+  <button id="send">Send</button>
+  <button id="stop" disabled>Stop</button>
+  <span id="status"></span>
+</div>
+<div id="out"></div>
+<div id="usage"></div>
+
+<script>
+// We use fetch + ReadableStream rather than EventSource because EventSource
+// only supports GET, and our /chat/stream is POST (richer request body).
+//
+// SSE framing is trivial enough that we parse it inline: split on "\n\n",
+// strip the "data: " prefix from each event line. We keep a leftover buffer
+// for partial events that arrive split across chunks.
+
+const $out    = document.getElementById('out');
+const $usage  = document.getElementById('usage');
+const $send   = document.getElementById('send');
+const $stop   = document.getElementById('stop');
+const $status = document.getElementById('status');
+const $prompt = document.getElementById('prompt');
+
+let controller = null;
+
+$send.addEventListener('click', async () => {
+  $out.textContent = '';
+  $usage.textContent = '';
+  $status.textContent = 'connecting...';
+  $send.disabled = true;
+  $stop.disabled = false;
+
+  controller = new AbortController();
+  const t0 = performance.now();
+  let firstTokenAt = null;
+
+  try {
+    const resp = await fetch('/chat/stream', {
+      method: 'POST',
+      headers: {'content-type': 'application/json'},
+      body: JSON.stringify({
+        messages: [{role: 'user', content: $prompt.value}],
+        temperature: 0.4,
+        max_tokens: 1024,
+      }),
+      signal: controller.signal,
+    });
+    if (!resp.ok) {
+      $out.classList.add('err');
+      $out.textContent = `HTTP ${resp.status}: ${await resp.text()}`;
+      return;
+    }
+    $status.textContent = 'streaming...';
+
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    while (true) {
+      const {value, done} = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, {stream: true});
+
+      // SSE events are separated by a blank line ("\n\n"). Anything before
+      // the last "\n\n" is complete; anything after is a partial event we
+      // hold for the next chunk.
+      const parts = buffer.split('\n\n');
+      buffer = parts.pop() ?? '';
+
+      for (const raw of parts) {
+        // An event may be multi-line: "data: ...\ndata: ...". For our
+        // server every event is one line, but we handle the general case.
+        const data = raw
+          .split('\n')
+          .filter(l => l.startsWith('data: '))
+          .map(l => l.slice(6))
+          .join('\n');
+        if (!data) continue;
+        if (data === '[DONE]') {
+          $status.textContent = `done in ${Math.round(performance.now() - t0)}ms`
+                              + (firstTokenAt
+                                ? ` (TTFT ${Math.round(firstTokenAt - t0)}ms)`
+                                : '');
+          continue;
+        }
+        let evt;
+        try { evt = JSON.parse(data); } catch { continue; }
+        if (evt.type === 'delta') {
+          if (firstTokenAt === null) firstTokenAt = performance.now();
+          $out.textContent += evt.text;
+        } else if (evt.type === 'usage') {
+          $usage.textContent =
+            `input=${evt.input_tokens}  output=${evt.output_tokens}`;
+        } else if (evt.type === 'error') {
+          $out.classList.add('err');
+          $out.textContent += `\n[error: ${evt.message}]`;
+        }
+      }
+    }
+  } catch (e) {
+    if (e.name === 'AbortError') {
+      $status.textContent = 'stopped by user';
+    } else {
+      $out.classList.add('err');
+      $out.textContent = `network error: ${e.message}`;
+    }
+  } finally {
+    $send.disabled = false;
+    $stop.disabled = true;
+    controller = null;
+  }
+});
+
+$stop.addEventListener('click', () => {
+  if (controller) controller.abort();
+});
+</script>
+</body>
+</html>

@@ -1,0 +1,13 @@
+{
+  "permissions": {
+    "allow": [
+      "PowerShell(& \"D:\\\\0.dev-bipro\\\\ai-engineering\\\\ai-zero-to-boss\\\\week1\\\\day3\\\\.venv\\\\Scripts\\\\python.exe\" -c \"import fastapi, uvicorn, pydantic, pydantic_settings, google.genai; print\\('all deps ok'\\)\" 2>&1)",
+      "PowerShell(& \"D:\\\\0.dev-bipro\\\\ai-engineering\\\\ai-zero-to-boss\\\\week1\\\\day3\\\\.venv\\\\Scripts\\\\pip.exe\" install -e \"D:\\\\0.dev-bipro\\\\ai-engineering\\\\ai-zero-to-boss\\\\week1\\\\day3[dev]\" --quiet 2>&1 | Select-Object -Last 10)",
+      "Bash(.venv/Scripts/python.exe -m ensurepip --upgrade)",
+      "Bash(.venv/Scripts/python.exe -m pip install -e \".[dev]\" --quiet)",
+      "Bash(.venv/Scripts/python.exe -m pip install \"fastapi>=0.115,<1.0\" \"uvicorn[standard]>=0.30,<1.0\" \"pydantic>=2.7,<3.0\" \"pydantic-settings>=2.4,<3.0\" \"google-genai>=1.0,<2.0\" \"tenacity>=9.0,<10.0\" \"httpx>=0.27,<1.0\" \"pytest>=8.0,<9.0\" \"pytest-asyncio>=0.23,<1.0\" \"ruff>=0.5,<1.0\" --quiet)",
+      "Bash(.venv/Scripts/python.exe -c \"import fastapi, uvicorn, pydantic, pydantic_settings, google.genai; print\\('all deps ok'\\)\")",
+      "Bash(GEMINI_API_KEY=test .venv/Scripts/python.exe -c \"from app.config import settings; from app.schemas.chat import ChatRequest, ChatResponse; from app.clients.base import LLMProvider; from app.routes.chat import router; import main; print\\('all imports ok'\\)\")"
+    ]
+  }
+}
